@@ -7,18 +7,23 @@
 
 package org.usfirst.frc.team5872.robot;
 
+import edu.wpi.first.wpilibj.ADXRS450_Gyro;
 import edu.wpi.first.wpilibj.AnalogInput;
 import edu.wpi.first.wpilibj.DigitalInput;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.I2C;
 
+import com.ctre.phoenix.motorcontrol.ControlMode;
+import com.ctre.phoenix.motorcontrol.FeedbackDevice;
 import com.ctre.phoenix.motorcontrol.can.TalonSRX;
 import com.kauailabs.navx.frc.AHRS;
 import edu.wpi.first.wpilibj.IterativeRobot;
 import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.PIDController;
 import edu.wpi.first.wpilibj.PIDOutput;
+import edu.wpi.first.wpilibj.PIDSource;
 import edu.wpi.first.wpilibj.PWM;
+import edu.wpi.first.wpilibj.SPI;
 import edu.wpi.first.wpilibj.SPI.Port;
 import edu.wpi.first.wpilibj.Servo;
 import edu.wpi.first.wpilibj.Timer;
@@ -48,53 +53,70 @@ public class Robot extends IterativeRobot {
 	boolean e;
 	boolean f;
 	boolean g;
+	boolean h;
+	boolean l;
+	boolean j;
+	boolean k;
+	
+	Joystick stick;
 	
 	int xVal;
-
-	//public AnalogInput pixyX;
-	//public AnalogInput pixyY;
 	
-	Servo x;
-	Servo y;
+	double target = 160;
 	
-	DigitalInput pixyX;
+	double error, errord, errorg = 0;
+	
+	double output, outputd, outputg;
+	
+	double integral = 0;
+	
+	double leftEnc;
+	
+	double errorPrior;
+	
+	double Diameter = 4;
+	
+	double EncoderTicks = 560;
+	
+	double SpeedRatio = 1.0;
+	
+	//double ticksToInches = ((EncoderTicks * SpeedRatio) / (Diameter * Math.PI));
+	
+	double ticksToInches = 1.0;
+	
+	double sensitivity = 0.2;
+	
+	double tolerance = 1;
+	
+	double encRead[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	
+	M_I2C ard;
+	
+	PixyPacket pkt;
+	
+	PIDController pOut;
+	
+	public static ADXRS450_Gyro gyro = new ADXRS450_Gyro(SPI.Port.kOnboardCS0);
+	
+	TalonSRX left;
+	TalonSRX right;
 	
 	Timer reset;
 	Timer interval;
-	//public AnalogInput pixyW;
-	//public AnalogInput pixyH;
+	Timer encoder;
 	
-	/*public NetworkTable table = NetworkTableInstance.getDefault().getTable("limelight");
-	public NetworkTableEntry tx = table.getEntry("tx");
-	public NetworkTableEntry ty = table.getEntry("ty");
-	public NetworkTableEntry ta = table.getEntry("ta");
-	public double x = tx.getDouble(0);
-	public double y = ty.getDouble(0);
-	public double area = ta.getDouble(0);
+	int iterationTime = 50;
 	
-	public TalonSRX frontLeft, frontRight, backLeft, backRight;
+	int _loops = 0;
 	
-	public static DriveTrain driveTrain;*/
+	double kP = 0.7;
+	double kI = 0.0;
 	
-	//public static PixyVision pixy;
+	double kPD = 2;
 	
-	/*public AHRS ahrs;
-	public double rotateToAngleRate;
-	public PIDController turnController;
+	double integralPrior = 0;
 	
-	public Joystick joystick;
-	
-	static final double kP = 0.03;
-	static final double kI = 0.00;
-	static final double kD = 0.00;
-	static final double kF = 0.00;
-	
-	float Kp = -0.1f;
-	float min_command = 0.05f;
-	
-	static final double kToleranceDegrees = 2.0f;
-	
-	static final double kTargetAngleDegrees = 90.0f;
+	boolean vision = false;
 	
 	/**
 	 * This function is run when the robot is first started up and should be
@@ -105,48 +127,43 @@ public class Robot extends IterativeRobot {
 		m_chooser.addDefault("Default Auto", kDefaultAuto);
 		m_chooser.addObject("My Auto", kCustomAuto);
 		SmartDashboard.putData("Auto choices", m_chooser);
+
+		left = new TalonSRX(1);
+		right = new TalonSRX(0);
 		
-		/*try {
-	          
-	          ahrs = new AHRS(Port.kMXP); 
-	          
-	    } 
-		catch (RuntimeException ex ) {
-			
-	          DriverStation.reportError("Error instantiating navX-MXP:  " + ex.getMessage(), true);
-	          
-	    }
+		//right.setInverted(true);
+		left.setInverted(true);
 		
-		driveTrain = new DriveTrain();*/
+		left.configSelectedFeedbackSensor(FeedbackDevice.QuadEncoder, 0, 30);
+		right.configSelectedFeedbackSensor(FeedbackDevice.QuadEncoder, 0, 30);
 		
-		//pixy = new PixyVision();
+		//left.setSensorPhase(true);
+		//right.setSensorPhase(true);
 		
-		x = new Servo(2);
-		y = new Servo(0);
+		left.config_kP(0, 105.06572411, 0);
+		left.config_kI(0, 0.425, 0);
+		left.config_kD(0, 0.10625, 0);
 		
-		/*frontLeft = new TalonSRX(0);
-		frontRight = new TalonSRX(1);
-		backLeft = new TalonSRX(2);
-		backRight = new TalonSRX(3);
+		//right.config_kP(0,  0.1,  0);
+		right.config_kP(0, 105.06572411, 0);
+		right.config_kI(0, 0.425, 0);
+		right.config_kD(0, 0.10625, 0);
 		
-		joystick = new Joystick(0);
+		gyro.calibrate();
 		
-	    turnController = new PIDController(kP, kI, kD, kF, ahrs, (PIDOutput) this);
-	    turnController.setInputRange(-180.0f,  180.0f);
-	    turnController.setOutputRange(-1.0, 1.0);
-	    turnController.setAbsoluteTolerance(kToleranceDegrees);
-	    turnController.setContinuous(true);*/
+		resetEncoders();
+
+		stick = new Joystick(0);
 		
-		pixyX = new DigitalInput(9);
+		ard = new M_I2C();
+		
+		pkt = new PixyPacket();
 		
 		reset = new Timer();
 		interval = new Timer();
-		//pixyY = new AnalogInput(2);
-		//pixyW = new AnalogInput(2);
-		//pixyH = new AnalogInput(3);
 		
-		//driveTrain.setupTalon(frontLeft, true, frontRight, false, backLeft, true, backRight, false);
-		
+		interval.reset();
+				
 	}
 
 	/**
@@ -166,6 +183,7 @@ public class Robot extends IterativeRobot {
 		// autoSelected = SmartDashboard.getString("Auto Selector",
 		// defaultAuto);
 		System.out.println("Auto selected: " + m_autoSelected);
+
 	}
 
 	/**
@@ -193,296 +211,102 @@ public class Robot extends IterativeRobot {
 	@Override
 	public void teleopPeriodic() {
 		
-		double angle = 0.5;
+		//double x = -stick.getRawAxis(0);
+		double y = stick.getRawAxis(1);
+		double z = -stick.getRawAxis(2) * 0.5;
+		
+		double fl = (y  + z);
+		double fr = (y  + -z);
 		
 		int i = 0;
 		
-		/*if(joystick.getRawButton(1)) {
+		SmartDashboard.putNumber("Left Enc: ", left.getSelectedSensorPosition(0));
+		SmartDashboard.putNumber("Right Enc: ", right.getSelectedSensorPosition(0));
+		
+		interval.start();
+		
+		while(stick.getRawButton(1)) {
+		
+			pkt = ard.getPixy();
 			
-			double heading_error = (x*-1);
-	        double steering_adjust = 0.0f;
-	        if (x > 1.0)
-	        {
-	                steering_adjust = Kp*heading_error - min_command;
-	        }
-	        else if (x < 1.0)
-	        {
-	                steering_adjust = Kp*heading_error + min_command;
-	        }
-	        double left_command = steering_adjust;
-	        double right_command = steering_adjust;
-	        
-	        driveTrain.setPower(driveTrain, left_command, right_command, left_command, right_command);
+			double xVal = pkt.x;
 			
-		}
-		else {
+			errord = 0.15 - pkt.area;
 			
-			driveTrain.stopDrive(driveTrain);
+			error = 0.5 - xVal;
 			
-		}*/
-		reset.start();
-		while(reset.get() <= 105) {
+			integral = integral + (error * interval.get());
 			
-			if(pixyX.get()) {
+			output = (kP * error + kI * integral);
+			
+			outputd = (kPD * errord);
+			
+			errorPrior = error;
+			//integralPrior = integral;
+			
+			SmartDashboard.putNumber("XPos: ", xVal);//print the data just to see
+			SmartDashboard.putNumber("YPos: ", pkt.y * 240);
+			
+			SmartDashboard.putNumber("Motor Pwr: ", output);
+			
+			SmartDashboard.putNumber("Timer: ", interval.get());
+			
+			SmartDashboard.putNumber("Angle: ", gyro.getAngle());
+	
+			left.set(ControlMode.PercentOutput,  ((-output + -outputd)));
+			right.set(ControlMode.PercentOutput, ((output + -outputd)));
+			
+			delay(iterationTime);
+			interval.stop();
+			interval.reset();
+			
+			SmartDashboard.putNumber("Area: ", pkt.area);
+			
+			if(xVal > 0.46 && xVal < 0.54) {
 				
-				a = pixyX.get();
-				delay(15);
-				b = pixyX.get();
-				delay(15);
-				c = pixyX.get();
-				delay(15);
-				d = pixyX.get();
-				delay(15);
-				e = pixyX.get();
-				delay(15);
-				f = pixyX.get();
-				delay(15);
-				g = pixyX.get();
-				delay(15);
+				vision = true;
 				
-				i++;
+			}
+			else {
 				
-				if(a == true) {
-					
-					if(b && !c && d && !e && !f && !g) {
-						
-						xVal = 0;
-						
-					}
-					else if(b && c && d && !e && !f && !g) {
-						
-						xVal = 10;
-						
-					}
-					else if(!b && !c && d && e && !f && !g) {
-						
-						xVal = 20;
-						
-					}
-					else if(b && !c && d && e && !f && !g) {
-						
-						xVal = 30;
-						
-       					}
-					else if(!b && c && d && e && !f && !g) {
-						
-						xVal = 40;
-						
-					}
-					else if(!b && !c && !d && e && !f && !g) {
-						
-						xVal = 50;
-						
-					}
-					else if(b && c && !d && e && !f && !g) {
-						
-						xVal = 60;
-						
-					}
-					else if(b && c && !d && e && !f && !g) {
-						
-						xVal = 70;
-						
-					}
-					else if(!b && c && d && e && !f && !g) {
-						
-						xVal = 80;
-						
-					}
-					else if(!b && !c && d && e && !f && !g) {
-						
-						xVal = 90;
-						
-					}
-					else if(b && !c && d && e && !f && !g) {
-						
-						xVal = 100;
-						
-					}
-					else if(!b && !c && !d &&  !e && f && !g) {
-						
-						xVal = 110;
-						
-					}
-					else if(b && !c && !d && !e && f && !g) {
-						
-						xVal = 120;
-						
-					}
-					else if(b && c && !d && !e && f && !g) {
-						
-						xVal = 130;
-						
-					}
-					else if(b && c && d && !e && f && !g) {
-						
-						xVal = 140;
-						
-					}
-					else if(!b && c && d && e && f && !g) {
-						
-						xVal = 150;
-						
-					}
-					else if(!b && !c && d && e && f && !g) {
-						
-						xVal = 160;
-						
-					}
-					else if(!b && !c && !d && e && f && !g) {
-						
-						xVal = 170;
-						
-					}
-					else if(b && !c && !d && e && f && !g) {
-						
-						xVal = 180;
-						
-					}
-					else if(!b && !c && !d && !e && !f && g) {
-						
-						xVal = 190;
-						
-					}
-					else if(b && !c && !d && !e && !f && g) {
-						
-						xVal = 200;
-						
-					}
-					else if(b && c && !d && !e && !f && g) {
-						
-						xVal = 210;
-						
-					}
-					else if(b && c && d && !e && !f && g) {
-						
-						xVal = 220;
-						
-					}
-					else if(b && c && d && e && !f && g) {
-						
-						xVal = 230;
-						
-					}
-					else if(!b && c && d && e && f && g) {
-						
-						xVal = 240;
-						
-					}
-					else if(!b && !c && d && e && f && g) {
-						
-						xVal = 250;
-						
-					}
-					else if(b && c && d && !e && !f && !g) {
-						
-						xVal = 260;
-						
-					}
-					else if(!b && c && !d && e && !f && !g) {
-						
-						xVal = 270;
-						
-					}
-					else if(b && c && d && e && !f && !g) {
-						
-						xVal = 280;
-						
-					}
-					else if(!b && c && d && !e && f && !g) {
-						
-						xVal = 290;
-						
-					}
-					else if(!b && c && !d && !e && f && !g) {
-						
-						xVal = 300;
-						
-					}
-					else if(!b && !c && d && !e && f && !g) {
-						
-						xVal = 310;
-						
-					}
-					else if(b && c && d && e && f && !g) {
-						
-						xVal = 320;
-						
-					}
-					
-					if(i%2 == 0) {
-						if(xVal < 99 || xVal > 219) {
-							
-							x.set(xVal * 0.00125);
-							
-						}
-					}
-					
-					SmartDashboard.putNumber("X: ", xVal);
-					SmartDashboard.putNumber("Servo Pos: ", xVal * 0.0099);
-					
-				}
-				
+				vision = false;
 				
 			}
 			
+			SmartDashboard.putBoolean("Vision", vision);
+		
 		}
 		
-		//pixyX.getV
-		//x.set(pixyX.getVoltage());
-		
-		//if(pixyX.getVoltage() < 2.2 || pixyX.getVoltage() > 2.8) {
-		
-			//angle += (pixyX.getVoltage()/5);
-			//x.set(angle);
+		while(stick.getRawButton(2)) {
 			
-		//}
-		
-		
-		
-	}
-
-	/**
-	 * This function is called periodically during test mode.
-	 */
-	@Override
-	public void testPeriodic() {
-	}
-
-	/*public double convertPixyToAngle() {
-		
-		double turningAngle;
-		
-		if(pixyX.getValue() > 164) {
+			EncDrive(2500, 2500, 5000);
 			
-			turningAngle = (-1*(pixyX.getVoltage()/2));
-			
+			//left.set(ControlMode.Position, 600);
+		
 		}
-		else if(pixyX.getValue() < 154) {
+		
+		if(stick.getRawButton(4)) {
 			
-			turningAngle = (pixyX.getVoltage()/2);
-			
-		}
-		else {
-			
-			turningAngle = 0;
+			resetEncoders();
 			
 		}
 		
-		return turningAngle;
-		
-	}
-	
-	public void turnRobotOffPixy() {
-		
-		while(pixyX.getValue() > 164 || pixyX.getValue() < 154) {
+		if(y < 0.1 && y > -0.1 && z < 0.1 && z > -0.1) {
 			
-			
+			left.set(ControlMode.PercentOutput, 0);
+			right.set(ControlMode.PercentOutput, 0);
 			
 		}
+		else{
 		
-	}
-	*/
+			left.set(ControlMode.PercentOutput, fl);
+			right.set(ControlMode.PercentOutput, fr);
+		
+		}
+		
+		SmartDashboard.putNumber("Angle: ", gyro.getAngle());
+		
+	}	
 	
 	public void delay(int milliseconds){
     	try{
@@ -492,10 +316,58 @@ public class Robot extends IterativeRobot {
     		e1.printStackTrace();
     	}
     }
-	public void pidWrite(double output) {
+	public void EncDrive(double leftDist, double rightDist, double timeOut) {
 		
-	   //rotateToAngleRate = output;
-	      
+		
+		//encoder.reset();
+		//encoder.start();
+		
+		//while(encoder.get() < timeOut) {
+		
+			double leftTarget = leftDist;
+			double rightTarget = rightDist;
+			
+			//double leftCurrent = left.getSelectedSensorPosition(0);
+			//double rightCurrent = right.getSelectedSensorPosition(0);
+			
+			//leftTarget = (leftDist * ticksToInches) - left.getSelectedSensorPosition(0);
+			//rightTarget = (rightDist * ticksToInches) - right.getSelectedSensorPosition(0);
+		
+			left.set(ControlMode.Position, leftDist);
+			right.set(ControlMode.Position, rightDist);
+			
+			SmartDashboard.putNumber("Left Target: ", leftDist * ticksToInches);
+			
+			/*if(leftCurrent > leftTarget) {
+				
+				left.set(ControlMode.PercentOutput, 0);
+				
+				SmartDashboard.putString("Left Encoder Pos", "True");
+				
+			}
+			if(rightCurrent > rightTarget) {
+				
+				right.set(ControlMode.PercentOutput, 0);
+				
+				SmartDashboard.putString("Right Encoder Pos", "True");
+				
+			}*/	
+			
+		//}
+		
+	}
+	
+	public void configForPos() {
+		
+		
+		
+	}
+	
+	public void resetEncoders() {
+		
+		left.getSensorCollection().setQuadraturePosition(0, 5);
+		right.getSensorCollection().setQuadraturePosition(0, 5);
+		
 	}
 	
 }
